@@ -74,6 +74,9 @@ public class GradeTextAssignmentCommand implements Command {
         ProcessBuilder processBuilder = new ProcessBuilder(this.command.split(" "));
         //processBuilder.redirectErrorStream(true);
 
+        // Force Python to use UTF-8 for stdin, stdout and stderr
+        processBuilder.environment().put("PYTHONIOENCODING", "utf-8");
+
         Process process = processBuilder.start();
 
         // When this try block is closed, it will send an EOF, indicating that there will be no more to read.
