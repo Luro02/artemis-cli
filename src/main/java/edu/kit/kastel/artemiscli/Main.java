@@ -25,12 +25,15 @@ public final class Main implements Runnable{
     private String artemisUrl = "https://artemis.cs.kit.edu/";
     //private String artemisUrl = "https://artemis-test.sdq.kastel.kit.edu/";
 
-    @CommandLine.Option(names = {"--username"}, description = "The username to use for authentication.", required = true)
+    @CommandLine.Option(names = {"--username"}, description = "The username to use for authentication. Required unless a token is provided.")
     private String artemisUsername;
 
-    // This is a char[] instead of a String, because the picocli docs recommend this for security reasons.
-    @CommandLine.Option(names = {"--password"}, description = "The password to use for authentication.", interactive = true, required = true)
+    @CommandLine.Option(names = {"--password"}, description = "The password to use for authentication. Required unless a token is provided.", interactive = true)
     private char[] artemisPassword;
+
+    // The credentials are char[]s instead of Strings, because the picocli docs recommend this for security reasons.
+    @CommandLine.Option(names = {"--token"}, description = "The access token to use for authentication. Alternative to username and password.")
+    private char[] artemisToken;
 
     @CommandLine.Option(names = {"--course"}, description = "The id or name of the course to use. By default the latest course is used.")
     private String courseInput = null;
@@ -77,22 +80,38 @@ public final class Main implements Runnable{
 
         // otherwise establish a new connection
         ArtemisInstance artemisInstance = new ArtemisInstance(this.artemisUrl);
-        // TODO: support token-based authentication?
-        if (this.artemisPassword == null) {
-            throw new CommandLine.ParameterException(this.specification.commandLine(), "No password provided.");
+
+        boolean hasPassword = this.artemisPassword != null;
+        boolean hasToken = this.artemisToken != null;
+
+        if (!hasPassword && !hasToken) {
+            throw new CommandLine.ParameterException(this.specification.commandLine(), "No credentials provided: either a password or a token is required.");
+        }
+
+        if (hasPassword && hasToken) {
+            throw new CommandLine.ParameterException(this.specification.commandLine(), "Ambiguous credentials: either a password or a token must be provided, not both.");
         }
 
         try {
-            this.connection = ArtemisConnection.connectWithUsernamePassword(
-                artemisInstance,
-                this.artemisUsername,
-                new String(this.artemisPassword)
-            );
+            if (hasToken) {
+                this.connection = ArtemisConnection.fromToken(artemisInstance, new String(this.artemisToken));
+            } else {
+                this.connection = ArtemisConnection.connectWithUsernamePassword(
+                    artemisInstance,
+                    this.artemisUsername,
+                    new String(this.artemisPassword)
+                );
+            }
         } catch (ArtemisClientException exception) {
             throw new CommandLine.ParameterException(this.specification.commandLine(), "Failed to authenticate with provided credentials: " + exception.getMessage(), exception);
         } finally {
-            // Clear the password from memory after using it
-            Arrays.fill(this.artemisPassword, ' ');
+            // Clear the secrets from memory after using them
+            if (hasPassword) {
+                Arrays.fill(this.artemisPassword, ' ');
+            }
+            if (hasToken) {
+                Arrays.fill(this.artemisToken, ' ');
+            }
         }
 
         return this.connection;
@@ -114,7 +133,7 @@ public final class Main implements Runnable{
         throw new CommandLine.ParameterException(this.specification.commandLine(), "Missing required subcommand");
     }
 
-    public static void main(String[] args) {
+    static void main(String[] args) {
         Main main = new Main();
         CommandLine commandLine = new CommandLine(main);
         System.exit(commandLine.execute(args));
